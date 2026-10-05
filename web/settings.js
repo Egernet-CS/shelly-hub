@@ -1,6 +1,6 @@
 import { api } from "./api.js";
 import { h, confirmButton } from "./dom.js";
-import { t } from "./i18n.js";
+import { ago, t } from "./i18n.js";
 
 // Settings view: find and add devices, manage rooms, rename/move/remove devices.
 
@@ -26,13 +26,15 @@ const APP_NAMES = {
 export function createSettings(root, { status }) {
   let home = { rooms: [], devices: [] };
   let discovery = { scanning: false, lastScan: null, devices: [] };
+  let blu = [];
   let manualMessage = null;
   let renderPending = false;
 
   const findEl = h("section", { class: "panel" });
   const roomsEl = h("section", { class: "panel" });
   const devicesEl = h("section", { class: "panel" });
-  root.replaceChildren(findEl, roomsEl, devicesEl);
+  const bluEl = h("section", { class: "panel" });
+  root.replaceChildren(findEl, roomsEl, devicesEl, bluEl);
 
   // Don't rebuild a section while the user is typing in it; catch up when focus leaves.
   root.addEventListener("focusout", () => {
@@ -224,11 +226,56 @@ export function createSettings(root, { status }) {
     );
   }
 
+  // ---- BLU (Bluetooth) devices ----
+
+  function signalLabel(rssi) {
+    if (rssi >= -70) return t("signalGood");
+    if (rssi >= -85) return t("signalOk");
+    return t("signalWeak");
+  }
+
+  function renderBlu() {
+    bluEl.replaceChildren(
+      h("h2", {}, t("bluDevices")),
+      h("p", { class: "hint" }, t("bluHint")),
+      blu.length === 0
+        ? h("p", { class: "hint" }, t("noBlu"))
+        : h("ul", { class: "list" }, blu.map((d) => {
+            const facts = [
+              d.battery != null ? t("battery", { value: d.battery }) : null,
+              d.rssi != null ? `${t("signal")}: ${signalLabel(d.rssi)}` : null,
+              d.lastSeen ? t("lastSeen", { time: ago(d.lastSeen) }) : null,
+            ].filter(Boolean);
+            return h("li", { class: "blu-item" },
+              h("div", { class: "found-title" },
+                h("strong", {}, d.name ?? t(`kind_${d.kind}`)),
+                h("span", { class: "muted mono" }, d.addr.slice(-5)),
+              ),
+              d.name ? h("div", { class: "muted" }, t(`kind_${d.kind}`)) : null,
+              h("div", {},
+                t("pairedWith", { name: d.gateway.name }),
+                " · ",
+                d.mode === "cloud" ? h("span", { class: "warn" }, t("viaCloud")) : h("span", { class: "ok" }, t("local")),
+              ),
+              facts.length ? h("div", { class: "muted" }, facts.join(" · ")) : null,
+              d.lastPress
+                ? h("div", { class: "muted" }, t("lastPress", {
+                    button: d.lastPress.button,
+                    event: t(`ev_${d.lastPress.event}`),
+                    time: ago(d.lastPress.ts),
+                  }))
+                : null,
+            );
+          })),
+    );
+  }
+
   function render() {
     renderPending = false;
     renderFind();
     renderRooms();
     renderDevices();
+    renderBlu();
   }
 
   function scheduleRender() {
@@ -240,6 +287,17 @@ export function createSettings(root, { status }) {
     update(snapshot) {
       home = snapshot;
       scheduleRender();
+    },
+    updateBlu(list) {
+      blu = list;
+      renderBlu(); // no inputs in this section, safe to redraw while typing elsewhere
+    },
+    bluPress({ addr, ...press }) {
+      const device = blu.find((d) => d.addr === addr);
+      if (!device) return;
+      device.lastPress = press;
+      device.lastSeen = press.ts;
+      renderBlu();
     },
     updateDiscovery(state) {
       discovery = state;

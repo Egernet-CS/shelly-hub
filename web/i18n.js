@@ -53,6 +53,32 @@ const messages = {
 
     devices: "Devices",
     noDevices: "No devices added yet.",
+
+    bluDevices: "Wall switches & sensors",
+    bluHint: "Bluetooth devices (Shelly BLU). A Shelly near them picks up their signals.",
+    noBlu: "No Bluetooth devices found.",
+    pairedWith: "Paired with {name}",
+    viaCloud: "via Shelly Cloud – only works with internet",
+    local: "local",
+    battery: "Battery {value}%",
+    signal: "Signal",
+    signalGood: "good",
+    signalOk: "fair",
+    signalWeak: "weak",
+    lastSeen: "Seen {time}",
+    lastPress: "Button {button} {event} {time}",
+    ev_single_push: "pressed",
+    ev_double_push: "double-pressed",
+    ev_triple_push: "triple-pressed",
+    ev_long_push: "held",
+    ev_long_double_push: "double-pressed and held",
+    ev_long_triple_push: "triple-pressed and held",
+    kind_switch4: "Wall switch (4 buttons)",
+    kind_button: "Button",
+    kind_contact: "Door/window sensor",
+    kind_motion: "Motion sensor",
+    kind_sensor: "Sensor",
+    kind_unknown: "Bluetooth device",
   },
   da: {
     home: "Hjem",
@@ -104,6 +130,32 @@ const messages = {
 
     devices: "Enheder",
     noDevices: "Ingen enheder tilføjet endnu.",
+
+    bluDevices: "Vægkontakter og sensorer",
+    bluHint: "Bluetooth-enheder (Shelly BLU). En Shelly i nærheden opfanger deres signaler.",
+    noBlu: "Ingen Bluetooth-enheder fundet.",
+    pairedWith: "Parret med {name}",
+    viaCloud: "via Shelly Cloud – virker kun med internet",
+    local: "lokalt",
+    battery: "Batteri {value} %",
+    signal: "Signal",
+    signalGood: "godt",
+    signalOk: "middel",
+    signalWeak: "svagt",
+    lastSeen: "Set {time}",
+    lastPress: "Knap {button} {event} {time}",
+    ev_single_push: "trykket",
+    ev_double_push: "dobbelttrykket",
+    ev_triple_push: "tredobbelttrykket",
+    ev_long_push: "holdt inde",
+    ev_long_double_push: "dobbelttrykket og holdt",
+    ev_long_triple_push: "tredobbelttrykket og holdt",
+    kind_switch4: "Vægkontakt (4 knapper)",
+    kind_button: "Knap",
+    kind_contact: "Dør-/vinduessensor",
+    kind_motion: "Bevægelsessensor",
+    kind_sensor: "Sensor",
+    kind_unknown: "Bluetooth-enhed",
   },
 };
 
@@ -116,6 +168,17 @@ function pickLanguage() {
 }
 
 export const lang = pickLanguage();
+
+// "5 minutes ago" in the UI language, from a unix timestamp in seconds.
+export function ago(unixSeconds) {
+  const diff = Math.round(unixSeconds - Date.now() / 1000);
+  const abs = Math.abs(diff);
+  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: "auto" });
+  if (abs < 45) return rtf.format(0, "second");
+  if (abs < 3600) return rtf.format(Math.round(diff / 60), "minute");
+  if (abs < 86400) return rtf.format(Math.round(diff / 3600), "hour");
+  return rtf.format(Math.round(diff / 86400), "day");
+}
 
 export function t(key, params = {}) {
   const text = messages[lang][key] ?? messages.en[key] ?? key;

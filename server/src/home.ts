@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
-import { ShellyComponent, type ComponentKind } from "./shelly.ts";
+import { ShellyComponent, ShellyConnection, type ComponentKind } from "./shelly.ts";
+import { BluTracker, type BluEntry, type BluPress } from "./blu.ts";
 import { ConfigStore, deviceId, type DeviceConfig, type HomeConfig, type RoomConfig } from "./store.ts";
 import type { DiscoveredDevice } from "./discovery.ts";
 
@@ -18,9 +19,14 @@ export interface DeviceView {
   power: number | null;
 }
 
+export interface BluView extends Omit<BluEntry, "componentKey"> {
+  gateway: { shellyId: string; name: string; online: boolean };
+}
+
 export interface HomeSnapshot {
   rooms: RoomConfig[];
   devices: DeviceView[];
+  blu: BluView[];
 }
 
 export interface DeviceCommand {
@@ -55,12 +61,24 @@ interface Entry {
   component: ShellyComponent;
 }
 
-// The home: rooms plus adopted device channels. Emits `device` for live state changes and
-// `structure` when rooms/devices are added, changed or removed.
-export class Home extends EventEmitter<{ device: [DeviceView]; structure: [] }> {
+interface Gateway {
+  connection: ShellyConnection;
+  blu: BluTracker;
+}
+
+// The home: rooms plus adopted device channels, and the BLU devices their Shellys know about.
+// Emits `device` for live state changes, `structure` when rooms/devices are added, changed or
+// removed, `blu` when the BLU list changes and `bluPress` for BLU button presses.
+export class Home extends EventEmitter<{
+  device: [DeviceView];
+  structure: [];
+  blu: [];
+  bluPress: [string, BluPress];
+}> {
   private store: ConfigStore;
   private rooms: RoomConfig[] = [];
   private devices = new Map<string, Entry>();
+  private shellys = new Map<string, Gateway>(); // by shellyId: one connection per physical Shelly
   private running = false;
 
   private constructor(store: ConfigStore) {
@@ -79,19 +97,43 @@ export class Home extends EventEmitter<{ device: [DeviceView]; structure: [] }> 
 
   start(): void {
     this.running = true;
-    for (const { component } of this.devices.values()) component.start();
+    for (const { connection } of this.shellys.values()) connection.start();
   }
 
   stop(): void {
     this.running = false;
-    for (const { component } of this.devices.values()) component.stop();
+    for (const { connection } of this.shellys.values()) connection.stop();
   }
 
   snapshot(): HomeSnapshot {
     return {
       rooms: this.rooms,
       devices: [...this.devices.keys()].map((id) => this.view(id)!),
+      blu: this.bluDevices(),
     };
+  }
+
+  // BLU devices across all Shellys. If several Shellys know a device, a local pairing wins
+  // over a cloud relay.
+  bluDevices(): BluView[] {
+    const result = new Map<string, BluView>();
+    for (const { connection, blu } of this.shellys.values()) {
+      const gateway = { shellyId: connection.shellyId, name: this.shellyName(connection.shellyId), online: connection.online };
+      for (const { componentKey: _, ...entry } of blu.entries.values()) {
+        const existing = result.get(entry.addr);
+        if (existing && !(existing.mode === "cloud" && entry.mode === "local")) continue;
+        result.set(entry.addr, { ...entry, gateway });
+      }
+    }
+    return [...result.values()].sort((a, b) => a.addr.localeCompare(b.addr));
+  }
+
+  // A friendly name for a physical Shelly: the name of its first added channel.
+  private shellyName(shellyId: string): string {
+    for (const { config } of this.devices.values()) {
+      if (config.shellyId === shellyId) return config.name;
+    }
+    return shellyId;
   }
 
   view(id: string): DeviceView | undefined {
@@ -140,10 +182,10 @@ export class Home extends EventEmitter<{ device: [DeviceView]; structure: [] }> 
   }
 
   async removeDevice(id: string): Promise<void> {
-    const { component } = this.entry(id);
-    component.stop();
-    component.removeAllListeners();
+    const { config, component } = this.entry(id);
+    component.detach();
     this.devices.delete(id);
+    this.releaseShelly(config.shellyId);
     await this.persist();
   }
 
@@ -151,14 +193,11 @@ export class Home extends EventEmitter<{ device: [DeviceView]; structure: [] }> 
   async updateHosts(found: DiscoveredDevice[]): Promise<void> {
     const hostById = new Map(found.map((d) => [d.shellyId, d.host]));
     let changed = false;
-    for (const [id, entry] of this.devices) {
-      const host = hostById.get(entry.config.shellyId);
-      if (!host || host === entry.config.host) continue;
-      entry.component.stop();
-      entry.component.removeAllListeners();
-      entry.config.host = host;
-      this.devices.delete(id);
-      this.attach(entry.config);
+    for (const { config } of this.devices.values()) {
+      const host = hostById.get(config.shellyId);
+      if (!host || host === config.host) continue;
+      config.host = host;
+      this.shellys.get(config.shellyId)?.connection.setHost(host);
       changed = true;
     }
     if (changed) await this.persist();
@@ -208,10 +247,39 @@ export class Home extends EventEmitter<{ device: [DeviceView]; structure: [] }> 
   // ---- Internals ----
 
   private attach(config: DeviceConfig): void {
-    const component = new ShellyComponent(config.host, config.component);
+    const { connection } = this.acquireShelly(config.shellyId, config.host);
+    const component = new ShellyComponent(connection, config.component);
     component.on("change", () => this.emit("device", this.view(config.id)!));
     this.devices.set(config.id, { config, component });
-    if (this.running) component.start();
+  }
+
+  private acquireShelly(shellyId: string, host: string): Gateway {
+    let shelly = this.shellys.get(shellyId);
+    if (!shelly) {
+      const connection = new ShellyConnection(shellyId, host);
+      const blu = new BluTracker(connection);
+      blu.on("change", () => this.emit("blu"));
+      blu.on("press", (addr, press) => this.emit("bluPress", addr, press));
+      connection.on("online", () => this.emit("blu"));
+      shelly = { connection, blu };
+      this.shellys.set(shellyId, shelly);
+      if (this.running) connection.start();
+    }
+    return shelly;
+  }
+
+  // Closes a Shelly's connection once none of its channels are added any more.
+  private releaseShelly(shellyId: string): void {
+    for (const { config } of this.devices.values()) {
+      if (config.shellyId === shellyId) return;
+    }
+    const shelly = this.shellys.get(shellyId);
+    if (!shelly) return;
+    shelly.blu.detach();
+    shelly.connection.stop();
+    shelly.connection.removeAllListeners();
+    this.shellys.delete(shellyId);
+    this.emit("blu");
   }
 
   private entry(id: string): Entry {

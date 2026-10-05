@@ -261,6 +261,18 @@ input[type="text"]:focus-visible, select:focus-visible { outline: 2px solid var(
 .manual summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
 .manual[open] summary { margin-bottom: 4px; }
 
+.blu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-block: 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.92rem;
+}
+.list .blu-item:last-child { border-bottom: none; }
+.warn { color: var(--accent); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); flex: none; }
 .dot-on { background: var(--ok); }
 

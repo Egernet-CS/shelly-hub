@@ -43,6 +43,8 @@ const roomRef = { type: ["string", "null"] };
 
 app.get("/api/home", async () => home.snapshot());
 
+app.get("/api/blu", async () => home.bluDevices());
+
 app.post<{ Params: { id: string }; Body: DeviceCommand }>(
   "/api/devices/:id/command",
   {
@@ -218,6 +220,8 @@ home.on("structure", () => {
   broadcast({ type: "discovery", data: discoveryView() });
 });
 discovery.on("update", () => broadcast({ type: "discovery", data: discoveryView() }));
+home.on("blu", () => broadcast({ type: "blu", data: home.bluDevices() }));
+home.on("bluPress", (addr, press) => broadcast({ type: "bluPress", data: { addr, ...press } }));
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, async () => {

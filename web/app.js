@@ -164,6 +164,11 @@ function connect() {
       snapshot = msg.data;
       renderHome(snapshot);
       settings.update(snapshot);
+      settings.updateBlu(snapshot.blu ?? []);
+    } else if (msg.type === "blu") {
+      settings.updateBlu(msg.data);
+    } else if (msg.type === "bluPress") {
+      settings.bluPress(msg.data);
     } else if (msg.type === "discovery") {
       settings.updateDiscovery(msg.data);
     } else if (msg.type === "device") {

@@ -78,7 +78,8 @@ The service reads `/var/lib/shelly-hub/home.json` and optional settings from `/e
 | `POST /api/rooms/:id/move` | `{ "direction": -1 \| 1 }` |
 | `GET /api/discovery` | latest search result (the hub searches at startup, every 5 min and on request) |
 | `POST /api/discovery/scan` | `{}` to search now, `{ "host": "…" }` to probe one address |
-| `WS /api/ws` | `snapshot` + `discovery` on connect and when they change, `device` on state changes |
+| `GET /api/blu` | Bluetooth (Shelly BLU) devices and which Shelly they're paired with |
+| `WS /api/ws` | `snapshot` + `discovery` on connect and when they change, `device` on state changes, `blu` / `bluPress` for Bluetooth devices |
 
 ## Translations
 

@@ -8,8 +8,9 @@ Roadmap: `PLAN.md`.
 ## Layout
 
 - `server/` – the hub. Node 24 + TypeScript (run directly via Node type stripping, no build), Fastify.
-  - `src/shelly.ts` – one Shelly Gen2+ component over the device's WebSocket RPC (`ws://<ip>/rpc`);
-    push updates via `NotifyStatus`, keepalive + reconnect.
+  - `src/shelly.ts` – `ShellyConnection` (one WebSocket RPC per Shelly, `ws://<ip>/rpc`, push via
+    `NotifyStatus`/`NotifyEvent`, keepalive + reconnect) and `ShellyComponent` (a switch/light channel).
+  - `src/blu.ts` – Shelly BLU (BTHome v2) devices a Shelly knows: local `bthomedevice` or cloud relay.
   - `src/home.ts` – rooms + adopted device channels; mutations persist and emit `structure`.
   - `src/store.ts` – `$DATA_DIR/home.json` load/save (atomic) + config migrations.
   - `src/discovery.ts` – finds Shellys by probing `/shelly` across the hub's /24 networks.
