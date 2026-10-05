@@ -1,0 +1,27 @@
+[Unit]
+Description=Simple – local Shelly hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=shelly-hub
+WorkingDirectory=/opt/shelly-hub/server
+Environment=NODE_ENV=production
+Environment=PORT=80
+Environment=DATA_DIR=/var/lib/shelly-hub
+Environment=PATH=/opt/node/bin:/usr/bin:/bin
+# Optional site settings, e.g. DENY_LOCAL_PREFIXES=192.168.50.
+EnvironmentFile=-/etc/shelly-hub.env
+ExecStart=/opt/node/bin/node src/main.ts
+Restart=always
+RestartSec=3
+StateDirectory=shelly-hub
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

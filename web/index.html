@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f1ea" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#16181c" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Simple">
+  <title>Simple</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1 data-i18n="home">Home</h1>
+    <span id="conn" class="conn" data-state="connecting" data-i18n="connecting">Connecting…</span>
+  </header>
+
+  <main id="rooms" class="rooms" aria-live="polite"></main>
+
+  <template id="room-tpl">
+    <section class="room">
+      <h2 class="room-name"></h2>
+      <div class="tiles"></div>
+    </section>
+  </template>
+
+  <template id="tile-tpl">
+    <article class="tile">
+      <button class="tile-toggle" type="button" aria-pressed="false">
+        <span class="bulb" aria-hidden="true"></span>
+        <span class="tile-text">
+          <span class="tile-name"></span>
+          <span class="tile-status"></span>
+        </span>
+      </button>
+      <input class="dimmer" type="range" min="1" max="100" step="1" data-i18n-aria="brightness" hidden>
+    </article>
+  </template>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "rooms": [
+    { "id": "living-room", "name": "Living room" },
+    { "id": "garden", "name": "Garden" }
+  ],
+  "devices": [
+    {
+      "id": "shellydimmerg4-aabbccddeeff",
+      "host": "192.168.1.50",
+      "component": "light:0",
+      "name": "Ceiling light",
+      "room": "living-room"
+    },
+    {
+      "id": "shelly1minig4-112233445566",
+      "host": "192.168.1.51",
+      "component": "switch:0",
+      "name": "Outdoor light",
+      "room": "garden"
+    }
+  ]
+}

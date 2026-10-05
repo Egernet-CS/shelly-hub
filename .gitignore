@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+*.log
+
+# Site-specific files (your own devices, network, secrets) – never committed
+local/
+CLAUDE.local.md
+server/data/
