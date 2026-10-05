@@ -70,6 +70,22 @@ Key technical choices:
 - [ ] mDNS discovery for instant results.
 - [ ] Covers/roller shutters, inputs, sensors (H&T, door/window), plugs with power metering.
 
+### Phase 3b – Shelly BLU devices (Bluetooth wall switches, buttons, sensors)
+BLU devices only speak Bluetooth (BTHome v2). The hub has no Bluetooth; instead a Shelly
+Gen3/Gen4 acts as gateway (BTHome components), so everything stays local.
+- [ ] Show BLU devices in the app: name, type, battery, signal (RSSI), last button press,
+      and **which Shelly they are paired with** (gateway). Read via `Shelly.GetComponents`
+      (`bthomedevice:*`, `bthomesensor:*`) and live via `NotifyStatus`/`NotifyEvent`.
+- [ ] Find unpaired BLU devices nearby (gateway BLE scan) and pair them to a gateway from the
+      app; pick the gateway with the best signal automatically. Unpair/move to another gateway.
+- [ ] **Wall switches** (BLU Wall Switch 4, RC Button 4 – 4 buttons, short/long/double press):
+      choose what each button does – toggle/dim a light, or run an Action.
+      Store the binding on the Shelly itself (local action on the gateway/target) so the
+      switch keeps working when the hub is down; the hub only configures it.
+- [ ] Sensors: door/window, H&T, motion, button – show state in rooms; usable as triggers in Phase 7.
+- [ ] Encrypted BLU devices: enter the bind key in the app.
+- [ ] Battery low warnings.
+
 ### Phase 4 – Pairing, security and API for native apps
 - [ ] Hub announces itself via mDNS.
 - [ ] Pairing: hub shows a QR code / code; apps get a token; unpaired requests refused.
