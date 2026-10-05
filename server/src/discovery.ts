@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { networkInterfaces } from "node:os";
 
 // Finds Shelly devices by probing `http://<ip>/shelly` on every host of the hub's own IPv4
@@ -86,5 +87,44 @@ async function getJson(url: string, timeoutMs: number): Promise<Record<string, a
     return body && typeof body === "object" ? body : null;
   } catch {
     return null;
+  }
+}
+
+// Keeps the latest scan result so apps can show new devices without waiting for a scan,
+// and makes sure only one scan runs at a time. Emits `update` when scanning starts/stops
+// or the result changes.
+export class DiscoveryService extends EventEmitter<{ update: [] }> {
+  devices: DiscoveredDevice[] = [];
+  scanning = false;
+  lastScan: number | null = null;
+  private running: Promise<DiscoveredDevice[]> | null = null;
+
+  scan(): Promise<DiscoveredDevice[]> {
+    if (!this.running) {
+      this.scanning = true;
+      this.emit("update");
+      this.running = scan()
+        .then((found) => {
+          this.devices = found;
+          this.lastScan = Date.now();
+          return found;
+        })
+        .finally(() => {
+          this.running = null;
+          this.scanning = false;
+          this.emit("update");
+        });
+    }
+    return this.running;
+  }
+
+  // Probes a single address (manual add) and merges the result into the list.
+  async probeHost(host: string): Promise<DiscoveredDevice | null> {
+    const device = await probe(host, 3_000);
+    if (device) {
+      this.devices = [...this.devices.filter((d) => d.shellyId !== device.shellyId), device];
+      this.emit("update");
+    }
+    return device;
   }
 }

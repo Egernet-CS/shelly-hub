@@ -39,6 +39,7 @@ function route() {
   settingsLinkEl.hidden = inSettings;
   titleEl.textContent = t(inSettings ? "settings" : "home");
   window.scrollTo(0, 0);
+  if (inSettings) settings.opened();
 }
 window.addEventListener("hashchange", route);
 route();
@@ -163,6 +164,8 @@ function connect() {
       snapshot = msg.data;
       renderHome(snapshot);
       settings.update(snapshot);
+    } else if (msg.type === "discovery") {
+      settings.updateDiscovery(msg.data);
     } else if (msg.type === "device") {
       snapshot.devices = snapshot.devices.map((d) => (d.id === msg.data.id ? msg.data : d));
       const entry = tiles.get(msg.data.id);

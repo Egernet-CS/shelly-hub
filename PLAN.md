@@ -59,7 +59,8 @@ Key technical choices:
 - [ ] Installable PWA (service worker, PNG icons) + kiosk mode for a wall tablet.
 
 ### Phase 3 – Setup without files (needed before public release)
-- [x] Discovery: subnet scan of the hub's networks (`/shelly` probe), plus probe by IP.
+- [x] Discovery: subnet scan of the hub's networks (`/shelly` probe) at startup, every 5 min
+      and when setup opens; new devices pushed live to the apps. Probe by IP as a fallback.
 - [x] Adopt channels in the app: name, room; rename, move, remove. (Not adopting = hidden.)
 - [x] Rooms management in the app: add, rename, reorder, delete (devices become unassigned).
 - [x] Config persisted by the hub (atomic writes to `$DATA_DIR/home.json`, auto-migration).

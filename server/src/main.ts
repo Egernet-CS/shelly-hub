@@ -4,7 +4,7 @@ import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import { Home, HomeError, type DeviceCommand, type DevicePatch, type NewDevice } from "./home.ts";
-import { probe, scan, type DiscoveredDevice } from "./discovery.ts";
+import { DiscoveryService } from "./discovery.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 8080);
@@ -147,26 +147,29 @@ app.delete<{ Params: { id: string } }>("/api/rooms/:id", async (req, reply) => {
 
 // ---- Discovery ----
 
-let scanning: Promise<DiscoveredDevice[]> | null = null;
+const discovery = new DiscoveryService();
 
-function scanOnce(): Promise<DiscoveredDevice[]> {
-  scanning ??= scan().finally(() => (scanning = null));
-  return scanning;
+async function runScan(): Promise<void> {
+  const found = await discovery.scan();
+  await home.updateHosts(found);
 }
 
-// If a device is offline it may have got a new IP from DHCP: rescan now and then to follow it.
-const OFFLINE_RESCAN_MS = 10 * 60_000;
-setInterval(async () => {
-  if (!home.snapshot().devices.some((d) => !d.online)) return;
-  try {
-    await home.updateHosts(await scanOnce());
-  } catch (err) {
-    app.log.warn({ err }, "background rescan failed");
-  }
-}, OFFLINE_RESCAN_MS).unref();
+// Scan results, with each channel marked as already added or not.
+function discoveryView() {
+  return {
+    scanning: discovery.scanning,
+    lastScan: discovery.lastScan,
+    devices: discovery.devices.map((d) => ({
+      ...d,
+      components: d.components.map((c) => ({ ...c, added: home.isAdopted(d.shellyId, c.key) })),
+    })),
+  };
+}
 
-// Scans the hub's networks (or probes one host when `host` is given) and marks which
-// channels are already added.
+app.get("/api/discovery", async () => discoveryView());
+
+// Starts a scan of the hub's networks (or probes one host when `host` is given) and returns
+// the result. Results are also pushed to all apps as `discovery` messages.
 app.post<{ Body: { host?: string } }>(
   "/api/discovery/scan",
   {
@@ -179,27 +182,27 @@ app.post<{ Body: { host?: string } }>(
     },
   },
   async (req) => {
-    let found: DiscoveredDevice[];
     if (req.body?.host) {
-      const device = await probe(req.body.host, 3_000);
-      found = device ? [device] : [];
-    } else {
-      found = await scanOnce();
+      const device = await discovery.probeHost(req.body.host);
+      if (device) await home.updateHosts([device]);
+      return { ...discoveryView(), found: device ? device.shellyId : null };
     }
-    await home.updateHosts(found);
-    return {
-      devices: found.map((d) => ({
-        ...d,
-        components: d.components.map((c) => ({ ...c, added: home.isAdopted(d.shellyId, c.key) })),
-      })),
-    };
+    await runScan();
+    return discoveryView();
   },
 );
+
+// Keep looking for new devices (and devices that got a new IP) in the background.
+const SCAN_INTERVAL_MS = 5 * 60_000;
+const backgroundScan = () => runScan().catch((err) => app.log.warn({ err }, "background scan failed"));
+setTimeout(backgroundScan, 5_000).unref();
+setInterval(backgroundScan, SCAN_INTERVAL_MS).unref();
 
 // ---- Live updates ----
 
 app.get("/api/ws", { websocket: true }, (socket) => {
   socket.send(JSON.stringify({ type: "snapshot", data: home.snapshot() }));
+  socket.send(JSON.stringify({ type: "discovery", data: discoveryView() }));
 });
 
 function broadcast(msg: unknown): void {
@@ -210,7 +213,11 @@ function broadcast(msg: unknown): void {
 }
 
 home.on("device", (device) => broadcast({ type: "device", data: device }));
-home.on("structure", () => broadcast({ type: "snapshot", data: home.snapshot() }));
+home.on("structure", () => {
+  broadcast({ type: "snapshot", data: home.snapshot() });
+  broadcast({ type: "discovery", data: discoveryView() });
+});
+discovery.on("update", () => broadcast({ type: "discovery", data: discoveryView() }));
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, async () => {

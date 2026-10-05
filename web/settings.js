@@ -25,8 +25,8 @@ const APP_NAMES = {
 
 export function createSettings(root, { status }) {
   let home = { rooms: [], devices: [] };
-  let scanResult = null; // null = not searched yet
-  let scanning = false;
+  let discovery = { scanning: false, lastScan: null, devices: [] };
+  let manualMessage = null;
   let renderPending = false;
 
   const findEl = h("section", { class: "panel" });
@@ -69,39 +69,39 @@ export function createSettings(root, { status }) {
     return `${base} ${Number(component.key.split(":")[1]) + 1}`;
   }
 
-  function renderFind() {
-    const searchButton = h("button", {
-      type: "button",
-      class: "btn btn-primary",
-      disabled: scanning,
-      onclick: () => search(),
-    }, scanning ? t("searching") : t("search"));
-
-    const ipInput = h("input", { type: "text", inputMode: "decimal", placeholder: t("ipPlaceholder"), autocomplete: "off" });
-    const ipForm = h("form", {
-      class: "inline-form",
-      onsubmit: (e) => {
-        e.preventDefault();
-        if (ipInput.value.trim()) search(ipInput.value.trim());
-      },
-    }, ipInput, h("button", { type: "submit", class: "btn", disabled: scanning }, t("add")));
-
-    findEl.replaceChildren(
-      h("h2", {}, t("findDevices")),
-      h("p", { class: "hint" }, t("findHint")),
-      searchButton,
-      h("p", { class: "label" }, t("addByIp")),
-      ipForm,
-      renderScanResult(),
-    );
+  // Devices the hub has found that still have channels to add (or that we can't support).
+  function newDevices() {
+    return discovery.devices.filter((d) => !d.supported || d.components.some((c) => !c.added));
   }
 
-  function renderScanResult() {
-    if (!scanResult) return null;
-    if (scanResult.devices.length === 0) {
-      return h("p", { class: "hint" }, scanResult.host ? t("notFoundAt", { host: scanResult.host }) : t("noneFound"));
-    }
-    return h("ul", { class: "found" }, scanResult.devices.map(renderFound));
+  function renderFind() {
+    const found = newDevices();
+    let body;
+    if (found.length > 0) body = h("ul", { class: "found" }, found.map(renderFound));
+    else if (discovery.scanning) body = h("p", { class: "hint searching" }, t("searching"));
+    else body = h("p", { class: "hint" }, t("noNewDevices"));
+
+    const footer = h("div", { class: "find-footer" },
+      discovery.scanning && found.length > 0 ? h("span", { class: "muted searching" }, t("searching")) : null,
+      discovery.scanning ? null : h("button", { type: "button", class: "btn-link", onclick: () => search() }, t("searchAgain")),
+    );
+
+    const ipInput = h("input", { type: "text", inputMode: "decimal", placeholder: t("ipPlaceholder"), autocomplete: "off", "aria-label": t("ipAddress") });
+    const manual = h("details", { class: "manual", open: manualMessage != null },
+      h("summary", {}, t("cantFind")),
+      h("p", { class: "hint" }, t("addByIpHint")),
+      h("form", {
+        class: "inline-form",
+        onsubmit: (e) => {
+          e.preventDefault();
+          const host = ipInput.value.trim();
+          if (host) probeHost(host);
+        },
+      }, ipInput, h("button", { type: "submit", class: "btn" }, t("add"))),
+      manualMessage ? h("p", { class: "hint" }, manualMessage) : null,
+    );
+
+    findEl.replaceChildren(h("h2", {}, t("newDevices")), body, footer, manual);
   }
 
   function renderFound(device) {
@@ -139,8 +139,6 @@ export function createSettings(root, { status }) {
             name: nameInput.value,
             room: roomSelect.value || null,
           });
-          component.added = true;
-          renderFind();
         });
       },
     },
@@ -151,18 +149,19 @@ export function createSettings(root, { status }) {
     );
   }
 
-  async function search(host) {
-    scanning = true;
-    renderFind();
+  function search() {
+    api.scan().catch((err) => status(t("saveError", { error: err.message })));
+  }
+
+  async function probeHost(host) {
+    manualMessage = null;
     try {
       const result = await api.scan(host);
-      scanResult = { ...result, host };
+      manualMessage = result.found ? null : t("notFoundAt", { host });
     } catch (err) {
-      status(t("saveError", { error: err.message }));
-    } finally {
-      scanning = false;
-      renderFind();
+      manualMessage = t("saveError", { error: err.message });
     }
+    renderFind();
   }
 
   // ---- Rooms ----
@@ -232,11 +231,23 @@ export function createSettings(root, { status }) {
     renderDevices();
   }
 
+  function scheduleRender() {
+    if (isEditing()) renderPending = true;
+    else render();
+  }
+
   return {
     update(snapshot) {
       home = snapshot;
-      if (isEditing()) renderPending = true;
-      else render();
+      scheduleRender();
+    },
+    updateDiscovery(state) {
+      discovery = state;
+      scheduleRender();
+    },
+    // Called when settings opens: look for new devices right away.
+    opened() {
+      if (!discovery.scanning) search();
     },
   };
 }

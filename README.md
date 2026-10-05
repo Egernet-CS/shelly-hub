@@ -13,7 +13,8 @@ show up instantly on every screen.
 ## Features
 
 - Rooms with big tap targets: on/off and dimming
-- Setup in the app: search the network for Shellys, add them, name them, put them in rooms
+- Setup in the app: new Shellys on your network show up by themselves – add them, name them,
+  put them in rooms
 - Follows devices that get a new IP address
 - Live status and power usage, pushed from the devices (no polling)
 - Works completely offline – nothing leaves your house
@@ -75,8 +76,9 @@ The service reads `/var/lib/shelly-hub/home.json` and optional settings from `/e
 | `DELETE /api/devices/:id` | remove a channel |
 | `POST /api/rooms` · `PATCH /api/rooms/:id` · `DELETE /api/rooms/:id` | `{ name }` |
 | `POST /api/rooms/:id/move` | `{ "direction": -1 \| 1 }` |
-| `POST /api/discovery/scan` | `{}` to search the network, `{ "host": "…" }` to probe one address |
-| `WS /api/ws` | `snapshot` on connect and after any setup change, `device` on state changes |
+| `GET /api/discovery` | latest search result (the hub searches at startup, every 5 min and on request) |
+| `POST /api/discovery/scan` | `{}` to search now, `{ "host": "…" }` to probe one address |
+| `WS /api/ws` | `snapshot` + `discovery` on connect and when they change, `device` on state changes |
 
 ## Translations
 
