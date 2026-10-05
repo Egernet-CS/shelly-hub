@@ -1,14 +1,49 @@
+import { api } from "./api.js";
+import { h } from "./dom.js";
 import { lang, t, translate } from "./i18n.js";
+import { createSettings } from "./settings.js";
 
 document.documentElement.lang = lang;
 translate();
 
 const roomsEl = document.getElementById("rooms");
+const settingsEl = document.getElementById("settings");
+const titleEl = document.getElementById("title");
+const backEl = document.getElementById("back");
+const settingsLinkEl = document.getElementById("settings-link");
+const statusEl = document.getElementById("status");
 const connEl = document.getElementById("conn");
 const roomTpl = document.getElementById("room-tpl");
 const tileTpl = document.getElementById("tile-tpl");
 
 const tiles = new Map(); // device id -> { el, device, dragging }
+let snapshot = { rooms: [], devices: [] };
+
+let statusTimer = null;
+function showStatus(text) {
+  statusEl.textContent = text;
+  statusEl.hidden = false;
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => (statusEl.hidden = true), 5000);
+}
+
+const settings = createSettings(settingsEl, { status: showStatus });
+
+// ---- Routing: #settings shows settings, anything else the home view ----
+
+function route() {
+  const inSettings = location.hash === "#settings";
+  roomsEl.hidden = inSettings;
+  settingsEl.hidden = !inSettings;
+  backEl.hidden = !inSettings;
+  settingsLinkEl.hidden = inSettings;
+  titleEl.textContent = t(inSettings ? "settings" : "home");
+  window.scrollTo(0, 0);
+}
+window.addEventListener("hashchange", route);
+route();
+
+// ---- Home view ----
 
 function setConn(state, text) {
   connEl.dataset.state = state;
@@ -23,23 +58,29 @@ function statusText(device) {
   return parts.join(" · ");
 }
 
-function renderAll({ rooms, devices }) {
+function renderHome({ rooms, devices }) {
   roomsEl.replaceChildren();
   tiles.clear();
-  for (const room of rooms) {
-    const roomDevices = devices.filter((d) => d.room === room.id);
-    if (roomDevices.length === 0) continue;
+  const roomIds = new Set(rooms.map((r) => r.id));
+  const groups = [
+    ...rooms.map((room) => ({ name: room.name, devices: devices.filter((d) => d.room === room.id) })),
+    { name: t("other"), devices: devices.filter((d) => !roomIds.has(d.room)) },
+  ];
+  for (const group of groups) {
+    if (group.devices.length === 0) continue;
     const roomEl = roomTpl.content.firstElementChild.cloneNode(true);
-    roomEl.querySelector(".room-name").textContent = room.name;
+    roomEl.querySelector(".room-name").textContent = group.name;
     const tilesEl = roomEl.querySelector(".tiles");
-    for (const device of roomDevices) tilesEl.append(createTile(device));
+    for (const device of group.devices) tilesEl.append(createTile(device));
     roomsEl.append(roomEl);
   }
   if (tiles.size === 0) {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.textContent = t("empty");
-    roomsEl.append(empty);
+    roomsEl.append(
+      h("div", { class: "empty" },
+        h("p", {}, t("empty")),
+        h("a", { class: "btn btn-primary", href: "#settings" }, t("setUp")),
+      ),
+    );
   }
 }
 
@@ -89,15 +130,10 @@ function updateTile(entry, device) {
   }
 }
 
-async function send(id, body, entry) {
+async function send(id, cmd, entry) {
   entry.el.classList.add("is-pending");
   try {
-    const res = await fetch(`api/devices/${encodeURIComponent(id)}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+    await api.command(id, cmd);
   } catch (err) {
     console.error(err);
     entry.el.querySelector(".tile-status").textContent = t("error");
@@ -105,6 +141,8 @@ async function send(id, body, entry) {
     entry.el.classList.remove("is-pending");
   }
 }
+
+// ---- Live connection ----
 
 let retryMs = 1000;
 let retryTimer = null;
@@ -121,8 +159,12 @@ function connect() {
 
   ws.addEventListener("message", (event) => {
     const msg = JSON.parse(event.data);
-    if (msg.type === "snapshot") renderAll(msg.data);
-    else if (msg.type === "device") {
+    if (msg.type === "snapshot") {
+      snapshot = msg.data;
+      renderHome(snapshot);
+      settings.update(snapshot);
+    } else if (msg.type === "device") {
+      snapshot.devices = snapshot.devices.map((d) => (d.id === msg.data.id ? msg.data : d));
       const entry = tiles.get(msg.data.id);
       if (entry) updateTile(entry, msg.data);
     }

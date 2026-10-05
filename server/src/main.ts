@@ -3,7 +3,8 @@ import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
-import { Home, type DeviceCommand } from "./home.ts";
+import { Home, HomeError, type DeviceCommand, type DevicePatch, type NewDevice } from "./home.ts";
+import { probe, scan, type DiscoveredDevice } from "./discovery.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 8080);
@@ -25,13 +26,25 @@ app.addHook("onRequest", async (req, reply) => {
   }
 });
 
+app.setErrorHandler((err, _req, reply) => {
+  if (err instanceof HomeError) return reply.code(err.status).send({ error: err.message });
+  if ((err as { validation?: unknown }).validation) return reply.code(400).send({ error: (err as Error).message });
+  app.log.error(err);
+  return reply.code(500).send({ error: "Internal error" });
+});
+
 await app.register(fastifyWebsocket);
 await app.register(fastifyStatic, { root: WEB_DIR });
+
+const name = { type: "string", minLength: 1, maxLength: 40 };
+const roomRef = { type: ["string", "null"] };
+
+// ---- Home & control ----
 
 app.get("/api/home", async () => home.snapshot());
 
 app.post<{ Params: { id: string }; Body: DeviceCommand }>(
-  "/api/devices/:id",
+  "/api/devices/:id/command",
   {
     schema: {
       body: {
@@ -46,26 +59,158 @@ app.post<{ Params: { id: string }; Body: DeviceCommand }>(
     },
   },
   async (req, reply) => {
-    if (!home.view(req.params.id)) return reply.code(404).send({ error: "Unknown device" });
+    if (!home.view(req.params.id)) throw new HomeError(404, "Unknown device");
     try {
       await home.command(req.params.id, req.body);
-      return reply.code(204).send();
     } catch (err) {
-      return reply.code(502).send({ error: (err as Error).message });
+      if (err instanceof HomeError) throw err;
+      throw new HomeError(502, (err as Error).message);
     }
+    return reply.code(204).send();
   },
 );
+
+// ---- Device setup ----
+
+app.post<{ Body: NewDevice }>(
+  "/api/devices",
+  {
+    schema: {
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["shellyId", "host", "component", "name", "room"],
+        properties: {
+          shellyId: { type: "string", minLength: 1 },
+          host: { type: "string", minLength: 1 },
+          component: { type: "string", pattern: "^(switch|light):\\d+$" },
+          name,
+          room: roomRef,
+        },
+      },
+    },
+  },
+  async (req, reply) => reply.code(201).send(await home.addDevice(req.body)),
+);
+
+app.patch<{ Params: { id: string }; Body: DevicePatch }>(
+  "/api/devices/:id",
+  {
+    schema: {
+      body: { type: "object", additionalProperties: false, properties: { name, room: roomRef } },
+    },
+  },
+  async (req) => home.updateDevice(req.params.id, req.body),
+);
+
+app.delete<{ Params: { id: string } }>("/api/devices/:id", async (req, reply) => {
+  await home.removeDevice(req.params.id);
+  return reply.code(204).send();
+});
+
+// ---- Rooms ----
+
+app.post<{ Body: { name: string } }>(
+  "/api/rooms",
+  { schema: { body: { type: "object", additionalProperties: false, required: ["name"], properties: { name } } } },
+  async (req, reply) => reply.code(201).send(await home.addRoom(req.body.name)),
+);
+
+app.patch<{ Params: { id: string }; Body: { name: string } }>(
+  "/api/rooms/:id",
+  { schema: { body: { type: "object", additionalProperties: false, required: ["name"], properties: { name } } } },
+  async (req) => home.renameRoom(req.params.id, req.body.name),
+);
+
+app.post<{ Params: { id: string }; Body: { direction: -1 | 1 } }>(
+  "/api/rooms/:id/move",
+  {
+    schema: {
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["direction"],
+        properties: { direction: { enum: [-1, 1] } },
+      },
+    },
+  },
+  async (req, reply) => {
+    await home.moveRoom(req.params.id, req.body.direction);
+    return reply.code(204).send();
+  },
+);
+
+app.delete<{ Params: { id: string } }>("/api/rooms/:id", async (req, reply) => {
+  await home.removeRoom(req.params.id);
+  return reply.code(204).send();
+});
+
+// ---- Discovery ----
+
+let scanning: Promise<DiscoveredDevice[]> | null = null;
+
+function scanOnce(): Promise<DiscoveredDevice[]> {
+  scanning ??= scan().finally(() => (scanning = null));
+  return scanning;
+}
+
+// If a device is offline it may have got a new IP from DHCP: rescan now and then to follow it.
+const OFFLINE_RESCAN_MS = 10 * 60_000;
+setInterval(async () => {
+  if (!home.snapshot().devices.some((d) => !d.online)) return;
+  try {
+    await home.updateHosts(await scanOnce());
+  } catch (err) {
+    app.log.warn({ err }, "background rescan failed");
+  }
+}, OFFLINE_RESCAN_MS).unref();
+
+// Scans the hub's networks (or probes one host when `host` is given) and marks which
+// channels are already added.
+app.post<{ Body: { host?: string } }>(
+  "/api/discovery/scan",
+  {
+    schema: {
+      body: {
+        type: ["object", "null"],
+        additionalProperties: false,
+        properties: { host: { type: "string", pattern: "^[A-Za-z0-9.-]{1,253}$" } },
+      },
+    },
+  },
+  async (req) => {
+    let found: DiscoveredDevice[];
+    if (req.body?.host) {
+      const device = await probe(req.body.host, 3_000);
+      found = device ? [device] : [];
+    } else {
+      found = await scanOnce();
+    }
+    await home.updateHosts(found);
+    return {
+      devices: found.map((d) => ({
+        ...d,
+        components: d.components.map((c) => ({ ...c, added: home.isAdopted(d.shellyId, c.key) })),
+      })),
+    };
+  },
+);
+
+// ---- Live updates ----
 
 app.get("/api/ws", { websocket: true }, (socket) => {
   socket.send(JSON.stringify({ type: "snapshot", data: home.snapshot() }));
 });
 
-home.on("device", (device) => {
-  const msg = JSON.stringify({ type: "device", data: device });
+function broadcast(msg: unknown): void {
+  const text = JSON.stringify(msg);
   for (const client of app.websocketServer.clients) {
-    if (client.readyState === client.OPEN) client.send(msg);
+    if (client.readyState === client.OPEN) client.send(text);
   }
-});
+}
+
+home.on("device", (device) => broadcast({ type: "device", data: device }));
+home.on("structure", () => broadcast({ type: "snapshot", data: home.snapshot() }));
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, async () => {

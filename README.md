@@ -7,12 +7,14 @@ A small hub on your home network keeps a live connection to every Shelly and ser
 for phones, tablets and desktops. State changes – including someone flipping a physical switch –
 show up instantly on every screen.
 
-> **Status:** early development. Works today for Shelly Gen2+ relays and dimmers; device setup
-> is still done in a config file. Native iOS and Android apps are planned. See [PLAN.md](PLAN.md).
+> **Status:** early development. Works today for Shelly Gen2+ relays and dimmers. Native iOS
+> and Android apps are planned. See [PLAN.md](PLAN.md).
 
 ## Features
 
 - Rooms with big tap targets: on/off and dimming
+- Setup in the app: search the network for Shellys, add them, name them, put them in rooms
+- Follows devices that get a new IP address
 - Live status and power usage, pushed from the devices (no polling)
 - Works completely offline – nothing leaves your house
 - Multilingual (English, Danish – more welcome)
@@ -26,11 +28,12 @@ Requires Node.js 22.18+ (24 recommended) and Shelly Gen2+ devices on a network t
 ```sh
 cd server
 npm install
-mkdir -p data && cp config/home.example.json data/home.json   # then edit it
-PORT=8080 node src/main.ts                                    # open http://localhost:8080
+PORT=8080 node src/main.ts     # open http://localhost:8080 and tap "Set up"
 ```
 
-`data/home.json` lists your rooms and devices:
+The hub must be on (or have an address in) the network your Shellys are on – it searches
+the /24 of each of its own network interfaces. Everything you set up in the app is saved in
+`data/home.json`, which you can also edit by hand:
 
 ```json
 {
@@ -66,8 +69,14 @@ The service reads `/var/lib/shelly-hub/home.json` and optional settings from `/e
 | | |
 |---|---|
 | `GET /api/home` | rooms + devices with current state |
-| `POST /api/devices/:id` | `{ "on": true }`, `{ "toggle": true }` or `{ "brightness": 1–100 }` |
-| `WS /api/ws` | `snapshot` on connect, then `device` updates |
+| `POST /api/devices/:id/command` | `{ "on": true }`, `{ "toggle": true }` or `{ "brightness": 1–100 }` |
+| `POST /api/devices` | add a channel: `{ shellyId, host, component, name, room }` |
+| `PATCH /api/devices/:id` | `{ name?, room? }` |
+| `DELETE /api/devices/:id` | remove a channel |
+| `POST /api/rooms` · `PATCH /api/rooms/:id` · `DELETE /api/rooms/:id` | `{ name }` |
+| `POST /api/rooms/:id/move` | `{ "direction": -1 \| 1 }` |
+| `POST /api/discovery/scan` | `{}` to search the network, `{ "host": "…" }` to probe one address |
+| `WS /api/ws` | `snapshot` on connect and after any setup change, `device` on state changes |
 
 ## Translations
 

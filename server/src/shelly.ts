@@ -92,8 +92,9 @@ export class ShellyComponent extends EventEmitter<{ change: [] }> {
       this.handleMessage(String(event.data));
     });
 
+    // An error is always followed by a close event, so reconnecting is handled there.
+    // (Calling close() from the error handler while connecting re-fires error and recurses.)
     ws.addEventListener("close", () => this.handleClose(ws));
-    ws.addEventListener("error", () => ws.close());
   }
 
   private handleClose(ws: WebSocket): void {

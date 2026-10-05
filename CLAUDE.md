@@ -10,18 +10,21 @@ Roadmap: `PLAN.md`.
 - `server/` – the hub. Node 24 + TypeScript (run directly via Node type stripping, no build), Fastify.
   - `src/shelly.ts` – one Shelly Gen2+ component over the device's WebSocket RPC (`ws://<ip>/rpc`);
     push updates via `NotifyStatus`, keepalive + reconnect.
-  - `src/home.ts` – loads `$DATA_DIR/home.json` (rooms + devices; empty if missing).
+  - `src/home.ts` – rooms + adopted device channels; mutations persist and emit `structure`.
+  - `src/store.ts` – `$DATA_DIR/home.json` load/save (atomic) + config migrations.
+  - `src/discovery.ts` – finds Shellys by probing `/shelly` across the hub's /24 networks.
   - `src/main.ts` – HTTP API, WebSocket hub, static web, optional `DENY_LOCAL_PREFIXES` block.
   - `config/home.example.json` – example config.
-- `web/` – plain HTML/CSS/JS web app, no build. All UI text goes through `web/i18n.js`.
+- `web/` – plain HTML/CSS/JS web app, no build. `app.js` (home view, routing, live socket),
+  `settings.js` (setup), `api.js`, `dom.js` (`h()` builder – never use innerHTML with user data).
+  All UI text goes through `web/i18n.js`.
 - `deploy/` – `setup-host.sh` (one-time Debian setup), `deploy.sh` (rsync + restart), systemd unit.
 
 ## Commands
 
 ```sh
 cd server && npm install && npm run typecheck
-mkdir -p data && cp config/home.example.json data/home.json
-PORT=8090 node src/main.ts
+PORT=8090 node src/main.ts         # empty home; set up via the app or copy config/home.example.json to data/
 deploy/deploy.sh [ssh-target]      # default $SHELLY_HUB_TARGET or root@shelly-hub.local
 ```
 

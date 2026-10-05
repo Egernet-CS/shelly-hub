@@ -59,10 +59,12 @@ Key technical choices:
 - [ ] Installable PWA (service worker, PNG icons) + kiosk mode for a wall tablet.
 
 ### Phase 3 – Setup without files (needed before public release)
-- [ ] Discovery: find Shellys on the network automatically.
-- [ ] Adopt devices in the app: name them, put them in rooms, hide channels.
-- [ ] Rooms management in the app.
-- [ ] Persist config written by the hub (data dir).
+- [x] Discovery: subnet scan of the hub's networks (`/shelly` probe), plus probe by IP.
+- [x] Adopt channels in the app: name, room; rename, move, remove. (Not adopting = hidden.)
+- [x] Rooms management in the app: add, rename, reorder, delete (devices become unassigned).
+- [x] Config persisted by the hub (atomic writes to `$DATA_DIR/home.json`, auto-migration).
+- [x] Follow devices that change IP (on scan, and background rescan while any device is offline).
+- [ ] mDNS discovery for instant results.
 - [ ] Covers/roller shutters, inputs, sensors (H&T, door/window), plugs with power metering.
 
 ### Phase 4 – Pairing, security and API for native apps
