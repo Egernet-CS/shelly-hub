@@ -84,6 +84,17 @@ Gen3/Gen4 acts as gateway (BTHome components), so everything stays local.
       choose what each button does – toggle/dim a light, or run an Action.
       Store the binding on the Shelly itself (local action on the gateway/target) so the
       switch keeps working when the hub is down; the hub only configures it.
+- [ ] **Move from Shelly Cloud to local** – many users have BLU switches set up in the official
+      app, where the Shelly only relays presses to the cloud. Migrating must never leave a
+      household without working switches:
+  1. *Learn* the current setup without changing anything: watch button presses (cloud relay
+     advertisements) and which lights change, and show "Button 1 → toggles Dining table".
+  2. User confirms the mapping (or edits it).
+  3. Pair the switch locally on a gateway and create the local bindings – for one switch at a
+     time, so the household can test it.
+  4. Guide the user to remove the cloud action (or disable cloud on the gateway); warn that
+     until then every press triggers twice. Detect double triggers and warn.
+  5. Roll back in one tap: remove local pairing and bindings again.
 - [ ] Sensors: door/window, H&T, motion, button – show state in rooms; usable as triggers in Phase 7.
 - [ ] Encrypted BLU devices: enter the bind key in the app.
 - [ ] Battery low warnings.
