@@ -76,6 +76,12 @@ Key technical choices:
 - [ ] Users/roles: admin vs. everyday user.
 - [ ] Versioned, documented API (OpenAPI) as the contract for the iOS/Android apps.
 - [ ] Optional: set Shelly auth + disable Shelly cloud from the hub.
+- [ ] **Device WiFi setting** in hub settings: the WiFi (SSID + password) new Shellys should join –
+      may differ from the phone's network (e.g. an IoT/guest WiFi). Set once, used by every app
+      when adding devices over Bluetooth.
+  - Password only handed to paired admin devices, never over the IoT network (`DENY_LOCAL_PREFIXES`),
+    stored in the data dir with owner-only file permissions, never shown in clear text in the
+    UI (write-only field, "••••••" + Change).
 
 ### Phase 5 – Native apps
 - [ ] iOS app (SwiftUI): find hub, pair, rooms, control, live updates, widgets.
@@ -87,8 +93,8 @@ Key technical choices:
     (`WiFi.SetConfig`), optionally also disables cloud / sets auth in the same step.
   - The hub finds the device on the network and the app continues straight into
     name + room – no WiFi hotspot switching, no IP addresses.
-  - WiFi credentials: entered once in the app and kept in the phone's keychain/keystore;
-    never sent to the hub.
+  - WiFi credentials come from the hub's "Device WiFi" setting (see Phase 4), so nobody
+    types them when adding a device – on any phone in the house.
   - Test with a new or factory-reset Gen4 device.
 - [ ] Localisation shared with the web app (same keys).
 - [ ] App Store / Google Play listings (local network + Bluetooth permissions, privacy policy:
