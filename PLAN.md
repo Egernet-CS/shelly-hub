@@ -42,6 +42,8 @@ Key technical choices:
   `NotifyStatus`, so no polling and no device config changes needed.
 - **mDNS (`_shelly._tcp`) + subnet scan** for finding Shellys.
 - **Native apps** (Swift/SwiftUI, Kotlin/Jetpack Compose) on top of a documented hub API.
+- **Bluetooth onboarding in the native apps**: new Shellys get WiFi credentials over BLE from
+  the phone, so setup never involves the device's WiFi hotspot. The hub itself needs no Bluetooth.
 - **Web app** (plain HTML/CSS/JS, no build) served by the hub – works on any device.
 - **No build step on the hub** – Node runs the TypeScript directly.
 
@@ -78,8 +80,19 @@ Key technical choices:
 ### Phase 5 – Native apps
 - [ ] iOS app (SwiftUI): find hub, pair, rooms, control, live updates, widgets.
 - [ ] Android app (Kotlin, Jetpack Compose): same feature set.
+- [ ] **Add brand-new Shellys over Bluetooth** (key feature – the hardest part of the official app):
+  - App scans for unprovisioned Shelly Gen2+ devices nearby via BLE and shows
+    "New Shelly found nearby".
+  - User taps Add; the app sends the home WiFi credentials over Shelly's BLE RPC
+    (`WiFi.SetConfig`), optionally also disables cloud / sets auth in the same step.
+  - The hub finds the device on the network and the app continues straight into
+    name + room – no WiFi hotspot switching, no IP addresses.
+  - WiFi credentials: entered once in the app and kept in the phone's keychain/keystore;
+    never sent to the hub.
+  - Test with a new or factory-reset Gen4 device.
 - [ ] Localisation shared with the web app (same keys).
-- [ ] App Store / Google Play listings (local network permission, privacy policy: no data collected).
+- [ ] App Store / Google Play listings (local network + Bluetooth permissions, privacy policy:
+      no data collected).
 
 ### Phase 6 – Easy install
 - [ ] Docker image + `docker compose` example.
